@@ -630,6 +630,7 @@ def api_get_settings():
     )
     settings['forward_email_window_minutes'] = get_setting('forward_email_window_minutes', '0')
     settings['forward_include_junkemail'] = get_setting('forward_include_junkemail', 'false')
+    settings['forward_sender_names'] = get_setting('forward_sender_names', '')
     settings['email_forward_recipient'] = get_setting('email_forward_recipient', '')
     settings['smtp_host'] = get_setting('smtp_host', '')
     settings['smtp_port'] = get_setting('smtp_port', '465')
@@ -1044,6 +1045,15 @@ def api_update_settings():
                 errors.append('保存转发垃圾箱邮件失败')
         else:
             errors.append('转发垃圾箱邮件必须是 true 或 false')
+
+    if 'forward_sender_names' in data:
+        sender_names = str(data.get('forward_sender_names') or '').strip()
+        if len(sender_names) > 5000:
+            errors.append('转发发件人白名单不能超过 5000 个字符')
+        elif set_setting('forward_sender_names', sender_names):
+            updated.append('转发发件人白名单')
+        else:
+            errors.append('保存转发发件人白名单失败')
 
     if 'forward_channels' in data:
         forward_channels = normalize_forward_channel_settings(data['forward_channels'])

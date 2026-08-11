@@ -136,6 +136,42 @@ class SystemSkinManagementTests(unittest.TestCase):
             with self.assertRaises(web_outlook_app.SkinValidationError):
                 web_outlook_app.validate_skin_package_directory(package_dir)
 
+    def test_manifest_validation_rejects_symlink_files(self):
+        with tempfile.TemporaryDirectory(prefix='outlook-skin-symlink-') as temp_dir, \
+                tempfile.TemporaryDirectory(prefix='outlook-skin-target-') as target_dir:
+            package_dir = Path(temp_dir)
+            (package_dir / 'skin.json').write_text(json.dumps({
+                'id': 'symlink-skin',
+                'name': 'Symlink Skin',
+                'version': '1.0.0',
+                'entry': 'theme.css',
+            }), encoding='utf-8')
+            (package_dir / 'theme.css').symlink_to(Path(target_dir) / 'theme.css')
+            Path(target_dir, 'theme.css').write_text(':root {}', encoding='utf-8')
+            with self.assertRaises(web_outlook_app.SkinValidationError):
+                web_outlook_app.validate_skin_package_directory(package_dir)
+
+    def test_api_path_segment_encoding_rejects_traversal(self):
+        self.assertEqual(
+            web_outlook_app.quote_api_path_segment('opaque/id=='),
+            'opaque%2Fid%3D%3D',
+        )
+        with self.assertRaises(ValueError):
+            web_outlook_app.quote_api_path_segment('../etc/passwd', 'message_id')
+        with self.assertRaises(ValueError):
+            web_outlook_app.quote_api_path_segment('message\x00id', 'message_id')
+
+    def test_api_routes_reject_path_traversal_identifiers(self):
+        responses = [
+            self.client.get('/api/email/missing%40example.com/..%2Fprofile'),
+            self.client.get('/api/email/missing%40example.com/message/attachments/..%2Fprofile'),
+            self.client.get('/api/temp-emails/missing%40example.com/messages/..%2Fprofile'),
+            self.client.get('/api/share/email/missing-token/email/..%2Fprofile'),
+        ]
+        for response in responses:
+            self.assertEqual(response.status_code, 400)
+            self.assertIn('路径穿越', response.get_json()['error'])
+
     def test_upload_skin_zip_installs_skin(self):
         response = self.client.post(
             '/api/skins/upload',

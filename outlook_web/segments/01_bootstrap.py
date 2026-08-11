@@ -2159,6 +2159,10 @@ def init_db():
     ''')
     cursor.execute('''
         INSERT OR IGNORE INTO settings (key, value)
+        VALUES ('forward_sender_names', '')
+    ''')
+    cursor.execute('''
+        INSERT OR IGNORE INTO settings (key, value)
         VALUES ('forward_channels', 'auto')
     ''')
     cursor.execute('''
@@ -2634,6 +2638,29 @@ class SkinValidationError(ValueError):
     """皮肤包格式或安全校验失败。"""
 
 
+def quote_api_path_segment(value: Any, field_name: str = '标识符') -> str:
+    """把不可信标识符编码为单个上游 URL 路径段。
+
+    邮件/附件 ID 由外部服务生成，可能包含需要 URL 编码的字符；但不能
+    让原始 ``.``/``..`` 路径段或控制字符进入上游 URL，否则 requests/代理
+    可能先做路径规范化，导致请求离开预期的资源边界。
+    """
+    raw = str(value or '').strip()
+    if not raw or any(ord(char) < 0x20 or ord(char) == 0x7F for char in raw):
+        raise ValueError(f'{field_name}无效')
+    if any(part in ('.', '..') for part in re.split(r'[/\\]+', raw)):
+        raise ValueError(f'{field_name}不能包含路径穿越')
+    return quote(raw, safe='')
+
+
+def api_path_identifier_error(value: Any, field_name: str = '标识符') -> str:
+    try:
+        quote_api_path_segment(value, field_name)
+    except ValueError as exc:
+        return str(exc)
+    return ''
+
+
 def normalize_skin_id(value: str) -> str:
     candidate = str(value or '').strip().lower()
     return candidate if SKIN_ID_PATTERN.fullmatch(candidate) else ''
@@ -2737,6 +2764,8 @@ def validate_skin_file_size(path: Path, max_bytes: int, label: str) -> None:
 def validate_skin_extra_files(package_dir: Path, allowed_paths: set[str]) -> None:
     base_dir = Path(package_dir).resolve()
     for file_path in base_dir.rglob('*'):
+        if file_path.is_symlink():
+            raise SkinValidationError(f'皮肤包不能包含符号链接: {file_path.relative_to(base_dir).as_posix()}')
         if not file_path.is_file():
             continue
 

@@ -1831,6 +1831,16 @@
             align-content: center;
         }
 
+        .forwarding-inline-control--sender-filter {
+            grid-column: 1 / -1;
+        }
+
+        .forwarding-inline-control--sender-filter textarea {
+            width: 100%;
+            min-height: 58px;
+            resize: vertical;
+        }
+
         .forwarding-inline-toggle {
             min-height: 22px;
         }

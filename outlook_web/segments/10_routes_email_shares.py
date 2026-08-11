@@ -483,6 +483,10 @@ def api_email_share_get_emails(token):
 
 @app.route('/api/share/email/<token>/email/<path:message_id>', methods=['GET'])
 def api_email_share_get_email_detail(token, message_id):
+    identifier_error = api_path_identifier_error(message_id, 'message_id')
+    if identifier_error:
+        return jsonify({'success': False, 'error': identifier_error}), 400
+
     folder, folder_error = normalize_email_share_folder_response(request.args.get('folder', 'inbox'))
     if folder_error:
         return folder_error

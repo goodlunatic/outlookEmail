@@ -68,7 +68,8 @@ def get_temp_emails_from_api(email_addr: str) -> Optional[List[Dict]]:
 
 def get_temp_email_detail_from_api(message_id: str) -> Optional[Dict]:
     """从 GPTMail API 获取邮件详情"""
-    result = gptmail_request('GET', f'/api/email/{message_id}')
+    encoded_message_id = quote_api_path_segment(message_id, 'message_id')
+    result = gptmail_request('GET', f'/api/email/{encoded_message_id}')
     
     if result and result.get('success'):
         return result.get('data')
@@ -77,7 +78,8 @@ def get_temp_email_detail_from_api(message_id: str) -> Optional[Dict]:
 
 def delete_temp_email_from_api(message_id: str) -> bool:
     """从 GPTMail API 删除邮件"""
-    result = gptmail_request('DELETE', f'/api/email/{message_id}')
+    encoded_message_id = quote_api_path_segment(message_id, 'message_id')
+    result = gptmail_request('DELETE', f'/api/email/{encoded_message_id}')
     return result and result.get('success', False)
 
 
@@ -900,7 +902,8 @@ def duckmail_get_messages(token: str, page: int = 1) -> Optional[List[Dict]]:
 
 def duckmail_get_message_detail(token: str, message_id: str) -> Optional[Dict]:
     """获取 DuckMail 邮件详情（含 body）"""
-    result = duckmail_request('GET', f'/messages/{message_id}', token=token)
+    encoded_message_id = quote_api_path_segment(message_id, 'message_id')
+    result = duckmail_request('GET', f'/messages/{encoded_message_id}', token=token)
     if result and result.get('id'):
         return result
     return None
@@ -908,7 +911,8 @@ def duckmail_get_message_detail(token: str, message_id: str) -> Optional[Dict]:
 
 def duckmail_delete_message(token: str, message_id: str) -> bool:
     """删除 DuckMail 邮件"""
-    result = duckmail_request('DELETE', f'/messages/{message_id}', token=token)
+    encoded_message_id = quote_api_path_segment(message_id, 'message_id')
+    result = duckmail_request('DELETE', f'/messages/{encoded_message_id}', token=token)
     return result is not None and result.get('success', False)
 
 
@@ -2632,6 +2636,10 @@ def api_get_temp_email_messages(email_addr):
 @login_required
 def api_get_temp_email_message_detail(email_addr, message_id):
     """获取临时邮件详情"""
+    identifier_error = api_path_identifier_error(message_id, 'message_id')
+    if identifier_error:
+        return jsonify({'success': False, 'error': identifier_error}), 400
+
     temp_email = get_temp_email_by_address(email_addr)
     provider = temp_email.get('provider', 'gptmail') if temp_email else 'gptmail'
 

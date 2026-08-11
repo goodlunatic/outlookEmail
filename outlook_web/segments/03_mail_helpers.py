@@ -642,7 +642,8 @@ def get_raw_email_graph(client_id: str, refresh_token: str, message_id: str, pro
         return None
 
     try:
-        url = f"https://graph.microsoft.com/v1.0/me/messages/{message_id}/$value"
+        encoded_message_id = quote_api_path_segment(message_id, 'message_id')
+        url = f"https://graph.microsoft.com/v1.0/me/messages/{encoded_message_id}/$value"
         headers = {
             "Authorization": f"Bearer {access_token}",
         }
@@ -669,7 +670,8 @@ def get_email_detail_graph_result(client_id: str, refresh_token: str, message_id
 
     access_token = token_result.get('access_token')
     try:
-        url = f"https://graph.microsoft.com/v1.0/me/messages/{message_id}"
+        encoded_message_id = quote_api_path_segment(message_id, 'message_id')
+        url = f"https://graph.microsoft.com/v1.0/me/messages/{encoded_message_id}"
         params = {
             "$select": "id,subject,from,toRecipients,ccRecipients,receivedDateTime,isRead,hasAttachments,body,bodyPreview"
         }
@@ -740,6 +742,20 @@ def mark_emails_read_graph_result(client_id: str, refresh_token: str, message_id
             'errors': ['message_ids 不能为空'],
         }
 
+    try:
+        encoded_ids = {
+            message_id: quote_api_path_segment(message_id, 'message_id')
+            for message_id in normalized_ids
+        }
+    except ValueError as exc:
+        return {
+            'success': False,
+            'success_count': 0,
+            'failed_count': len(normalized_ids),
+            'updated_ids': [],
+            'errors': [build_error_payload('EMAIL_ID_INVALID', str(exc), 'ValidationError', 400, '')],
+        }
+
     token_result = get_access_token_graph_result(client_id, refresh_token, proxy_url, fallback_proxy_urls)
     if not token_result.get('success'):
         return {
@@ -767,7 +783,7 @@ def mark_emails_read_graph_result(client_id: str, refresh_token: str, message_id
             batch_requests.append({
                 'id': str(batch_index),
                 'method': 'PATCH',
-                'url': f'/me/messages/{message_id}',
+                'url': f'/me/messages/{encoded_ids[message_id]}',
                 'headers': {
                     'Content-Type': 'application/json',
                 },
@@ -851,7 +867,8 @@ def get_email_attachments_graph(client_id: str, refresh_token: str, message_id: 
         return None
 
     try:
-        url = f"https://graph.microsoft.com/v1.0/me/messages/{message_id}/attachments"
+        encoded_message_id = quote_api_path_segment(message_id, 'message_id')
+        url = f"https://graph.microsoft.com/v1.0/me/messages/{encoded_message_id}/attachments"
         headers = {
             "Authorization": f"Bearer {access_token}",
         }
@@ -901,7 +918,12 @@ def download_email_attachment_graph_result(client_id: str, refresh_token: str, m
     }
 
     try:
-        metadata_url = f"https://graph.microsoft.com/v1.0/me/messages/{message_id}/attachments/{attachment_id}"
+        encoded_message_id = quote_api_path_segment(message_id, 'message_id')
+        encoded_attachment_id = quote_api_path_segment(attachment_id, 'attachment_id')
+        metadata_url = (
+            "https://graph.microsoft.com/v1.0/me/messages/"
+            f"{encoded_message_id}/attachments/{encoded_attachment_id}"
+        )
         metadata_res = get_with_proxy_fallback(
             metadata_url,
             headers=headers,

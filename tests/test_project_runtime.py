@@ -2520,7 +2520,7 @@ class FrontendTimezoneBootstrapTests(unittest.TestCase):
         self.assertIn("invalidateNormalMailRetentionCaches({ resetCurrentView: true });", settings_js)
         self.assertIn('wasRetentionEnabled && !normalMailLocalRetentionEnabled', settings_js)
 
-    def test_new_mail_notice_stages_rows_until_user_accepts(self):
+    def test_new_mail_sync_renders_rows_immediately_without_notice(self):
         emails_js = pathlib.Path(ROOT_DIR, 'static', 'js', 'index', '05-emails.js').read_text(encoding='utf-8')
 
         queue_start = emails_js.index('function queuePendingNewMailSync')
@@ -2530,6 +2530,7 @@ class FrontendTimezoneBootstrapTests(unittest.TestCase):
 
         self.assertIn('pendingNewMailSyncs.set(syncKey', queue_block)
         self.assertIn('announceNewlySyncedEmailRows(data, newlySyncedRows, options.folder, syncKey);', queue_block)
+        self.assertIn('applyPendingNewMailSync(syncKey);', queue_block)
         self.assertNotIn('currentEmails =', queue_block)
         self.assertNotIn('renderEmailList(currentEmails);', queue_block)
         self.assertNotIn('mergedEmails:', queue_block)
@@ -2540,10 +2541,11 @@ class FrontendTimezoneBootstrapTests(unittest.TestCase):
         self.assertIn('requestBodyRetentionForNewRows(newlySyncedRows, pending.options.folder);', apply_block)
         self.assertIn('scheduleNewEmailHighlightClear();', apply_block)
 
-        self.assertIn("notice.setAttribute('role', 'button');", emails_js)
-        self.assertIn("notice.setAttribute('tabindex', '0');", emails_js)
-        self.assertIn('notice.replaceChildren();', emails_js)
-        self.assertIn("hint.textContent = '点击显示';", emails_js)
+        self.assertNotIn("notice.setAttribute('role', 'button');", emails_js)
+        self.assertNotIn("hint.textContent = '点击显示';", emails_js)
+        self.assertNotIn('id="newMailNotice"', pathlib.Path(
+            ROOT_DIR, 'templates', 'partials', 'index', 'layout.html'
+        ).read_text(encoding='utf-8'))
         self.assertIn('NEW_EMAIL_HIGHLIGHT_CLEAR_DELAY_MS', emails_js)
         self.assertNotIn('已自动显示', emails_js)
         self.assertNotIn('cacheRemoteEmailSyncResult', emails_js)

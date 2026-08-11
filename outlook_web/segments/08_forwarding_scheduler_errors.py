@@ -46,6 +46,57 @@ def get_bool_setting(key: str, default: bool = False) -> bool:
     return value in ('1', 'true', 'yes', 'on')
 
 
+def normalize_forward_sender_name(value: Any) -> str:
+    """规范化显示名称，用于把同名但地址变化的发件人归为一类。"""
+    return re.sub(r'\s+', ' ', str(value or '').strip()).casefold()
+
+
+def get_forward_sender_names() -> set[str]:
+    raw_value = get_setting('forward_sender_names', '')
+    values = re.split(r'[,\n;]+', str(raw_value or ''))
+    names = set()
+    for value in values:
+        raw_name = str(value or '').strip()
+        if not raw_name:
+            continue
+        parsed_name, parsed_address = email.utils.parseaddr(raw_name)
+        names.add(normalize_forward_sender_name(parsed_name or parsed_address or raw_name))
+    return names
+
+
+def get_email_sender_name(sender: Any, sender_name: Any = '') -> str:
+    explicit_name = str(sender_name or '').strip()
+    if explicit_name:
+        return explicit_name
+    parsed_name, parsed_address = email.utils.parseaddr(str(sender or ''))
+    return parsed_name.strip() or parsed_address.strip()
+
+
+def get_email_sender_address(sender: Any) -> str:
+    _parsed_name, parsed_address = email.utils.parseaddr(str(sender or ''))
+    return parsed_address.strip().casefold()
+
+
+def forward_sender_allowed(item: Dict[str, Any], allowed_names: Optional[set[str]] = None) -> bool:
+    allowed_names = get_forward_sender_names() if allowed_names is None else allowed_names
+    if not allowed_names:
+        return True
+    sender = item.get('from', '')
+    sender_name = get_email_sender_name(sender, item.get('from_name', ''))
+    normalized_name = normalize_forward_sender_name(sender_name)
+    sender_address = get_email_sender_address(sender)
+    for allowed in allowed_names:
+        if allowed.startswith('@'):
+            if sender_address.endswith(allowed):
+                return True
+        elif '@' in allowed:
+            if sender_address == allowed:
+                return True
+        elif normalized_name == allowed:
+            return True
+    return False
+
+
 def normalize_forward_channel_settings(raw_channels: Any) -> list[str]:
     if isinstance(raw_channels, str):
         values = raw_channels.split(',')
@@ -450,6 +501,7 @@ def fetch_forward_detail(account: Dict[str, Any], message_id: str, folder: str =
         'id': detail.get('id'),
         'subject': detail.get('subject', '无主题'),
         'from': detail.get('from', {}).get('emailAddress', {}).get('address', '未知'),
+        'from_name': detail.get('from', {}).get('emailAddress', {}).get('name', ''),
         'to': ', '.join([r.get('emailAddress', {}).get('address', '') for r in detail.get('toRecipients', [])]),
         'cc': ', '.join([r.get('emailAddress', {}).get('address', '') for r in detail.get('ccRecipients', [])]),
         'date': detail.get('receivedDateTime', ''),
@@ -497,6 +549,7 @@ def build_forwarding_job_config() -> Dict[str, Any]:
             get_setting_decrypted('wecom_webhook_url', '').strip()
         ),
         'include_junkemail': get_bool_setting('forward_include_junkemail', False),
+        'forward_sender_names': get_forward_sender_names(),
         'account_delay_seconds': account_delay_seconds,
         'forward_window_start': (
             datetime.now() - timedelta(minutes=forward_window_minutes)
@@ -653,6 +706,13 @@ def process_forwarding_account(account_row: Dict[str, Any], job_config: Dict[str
             latest_success_time = cursor_time
             forward_window_start = job_config.get('forward_window_start')
             for item in emails:
+                if not forward_sender_allowed(item, job_config.get('forward_sender_names')):
+                    app.logger.info(
+                        '[forward] skip email sender not in allowlist: account=%s sender=%s',
+                        account.get('email', ''),
+                        get_email_sender_name(item.get('from', ''), item.get('from_name', '')),
+                    )
+                    continue
                 dt = parse_email_datetime(item.get('date', ''))
                 if forward_window_start and dt and dt < forward_window_start:
                     app.logger.info(

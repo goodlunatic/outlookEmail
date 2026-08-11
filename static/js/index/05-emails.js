@@ -244,6 +244,8 @@
                 newlySyncedRows
             });
             announceNewlySyncedEmailRows(data, newlySyncedRows, options.folder, syncKey);
+            // 新邮件同步完成后立即合并并渲染，不再等待用户点击提示条。
+            applyPendingNewMailSync(syncKey);
             return mergedResult;
         }
 
@@ -583,35 +585,6 @@
             return Number(data.new_count || 0) > 0 ? mergeResult.newEmails : [];
         }
 
-        function showNewMailNotice(newCount, syncKey = getPendingNewMailSyncKey()) {
-            const notice = document.getElementById('newMailNotice');
-            if (!notice || newCount <= 0) {
-                hideNewMailNotice();
-                return;
-            }
-
-            const acceptPendingSync = () => applyPendingNewMailSync(syncKey);
-            notice.hidden = false;
-            notice.setAttribute('role', 'button');
-            notice.setAttribute('tabindex', '0');
-            notice.dataset.syncKey = syncKey;
-            notice.onclick = acceptPendingSync;
-            notice.onkeydown = event => {
-                if (event.key === 'Enter' || event.key === ' ') {
-                    event.preventDefault();
-                    acceptPendingSync();
-                }
-            };
-            notice.replaceChildren();
-            const message = document.createElement('span');
-            message.textContent = `有 ${Number(newCount)} 封新邮件已同步`;
-            const hint = document.createElement('span');
-            hint.className = 'new-mail-notice__hint';
-            hint.textContent = '点击显示';
-            notice.append(message, hint);
-        }
-
-
         function markNewlySyncedEmailRows(rows, fallbackFolder = currentFolder) {
             highlightedNewEmailKeys = new Set();
             rows.forEach(emailItem => {
@@ -632,14 +605,8 @@
         }
 
         function announceNewlySyncedEmailRows(data, rows, fallbackFolder = currentFolder, syncKey = getPendingNewMailSyncKey()) {
-            const reportedCount = Number(data.new_count || 0);
-            const visibleCount = reportedCount > 0 ? reportedCount : rows.length;
-            if (visibleCount <= 0) {
-                hideNewMailNotice();
-                return;
-            }
-
-            showNewMailNotice(visibleCount, syncKey);
+            // 保留函数作为兼容入口，但不再显示“点击显示”提示。
+            hideNewMailNotice();
         }
 
         function buildBodyRetentionItems(rows, fallbackFolder = currentFolder) {

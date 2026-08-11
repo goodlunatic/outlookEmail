@@ -1995,6 +1995,22 @@ def api_get_refresh_status_list():
 def delete_emails_graph(client_id: str, refresh_token: str, message_ids: List[str], proxy_url: str = None,
                         fallback_proxy_urls: List[str] = None) -> Dict[str, Any]:
     """通过 Graph API 批量删除邮件（永久删除）"""
+    try:
+        encoded_ids = {
+            str(message_id): quote_api_path_segment(message_id, 'message_id')
+            for message_id in (message_ids or [])
+        }
+    except ValueError as exc:
+        return {
+            "success": False,
+            "success_count": 0,
+            "failed_count": len(message_ids or []),
+            "deleted_ids": [],
+            "updated_ids": [],
+            "error": str(exc),
+            "errors": [str(exc)],
+        }
+
     access_token = get_access_token_graph(client_id, refresh_token, proxy_url, fallback_proxy_urls)
     if not access_token:
         return {
@@ -2032,7 +2048,7 @@ def delete_emails_graph(client_id: str, refresh_token: str, message_ids: List[st
             batch_requests.append({
                 "id": str(idx),
                 "method": "DELETE",
-                "url": f"/me/messages/{msg_id}"
+                "url": f"/me/messages/{encoded_ids[str(msg_id)]}"
             })
 
         try:
@@ -3396,10 +3412,12 @@ def fetch_retained_normal_mail_list(account: Dict[str, Any], folder: str,
 
 
 def format_graph_email_item(item: Dict[str, Any], folder: str) -> Dict[str, Any]:
+    sender_info = item.get('from', {}).get('emailAddress', {}) or {}
     return normalize_email_list_item({
         'id': item.get('id'),
         'subject': item.get('subject', '无主题'),
-        'from': item.get('from', {}).get('emailAddress', {}).get('address', '未知'),
+        'from': sender_info.get('address', '未知'),
+        'from_name': sender_info.get('name', ''),
         'to': ', '.join([
             recipient.get('emailAddress', {}).get('address', '')
             for recipient in (item.get('toRecipients') or [])
@@ -3903,6 +3921,10 @@ def api_delete_emails():
 @login_required
 def api_get_raw_email(email_addr, message_id):
     """获取原始 MIME 邮件源码。"""
+    identifier_error = api_path_identifier_error(message_id, 'message_id')
+    if identifier_error:
+        return jsonify({'success': False, 'error': identifier_error}), 400
+
     account = get_account_by_email(email_addr)
 
     if not account:
@@ -4044,6 +4066,10 @@ def fetch_email_detail_for_account(account, message_id, method='graph', folder='
 @login_required
 def api_get_email_detail(email_addr, message_id):
     """获取邮件详情"""
+    identifier_error = api_path_identifier_error(message_id, 'message_id')
+    if identifier_error:
+        return jsonify({'success': False, 'error': identifier_error}), 400
+
     account = get_account_by_email(email_addr)
     if not account:
         return jsonify({'success': False, 'error': '账号不存在'})
@@ -4266,6 +4292,10 @@ def stream_email_attachments_zip(account, method, message_id, attachments, folde
 @login_required
 def api_download_all_email_attachments(email_addr, message_id):
     """打包下载邮件所有附件"""
+    identifier_error = api_path_identifier_error(message_id, 'message_id')
+    if identifier_error:
+        return jsonify({'success': False, 'error': identifier_error}), 400
+
     account = get_account_by_email(email_addr)
     if not account:
         return jsonify({'success': False, 'error': '账号不存在'})
@@ -4313,6 +4343,13 @@ def api_download_all_email_attachments(email_addr, message_id):
 @login_required
 def api_download_email_attachment(email_addr, message_id, attachment_id):
     """下载邮件附件"""
+    identifier_error = (
+        api_path_identifier_error(message_id, 'message_id')
+        or api_path_identifier_error(attachment_id, 'attachment_id')
+    )
+    if identifier_error:
+        return jsonify({'success': False, 'error': identifier_error}), 400
+
     account = get_account_by_email(email_addr)
     if not account:
         return jsonify({'success': False, 'error': '账号不存在'})

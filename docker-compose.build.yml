@@ -1,10 +1,9 @@
-version: '3.8'
-
 services:
   outlook-mail-local:
     build:
       context: .
       dockerfile: Dockerfile
+      network: host
     image: outlookemail:local
     container_name: outlook-mail-local
     ports:
@@ -27,7 +26,7 @@ services:
     # 镜像标签建议用 mutable tag（latest / main / dev）以便自更新；如用固定版本号（v2.0.x）则无更新能力
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://127.0.0.1:5000/ || exit 1"]
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/', timeout=4)\" || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
